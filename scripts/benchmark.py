@@ -3,7 +3,7 @@ import itertools
 
 # Python版ソルバー(事前に生成したmake10_table_all.py)をインポート
 try:
-    from make10_table_all import SOLUTIONS as PY_SOLUTIONS
+    from scripts.make10_table_all import SOLUTIONS as PY_SOLUTIONS
 except ImportError:
     print("Warning: make10_table_all.py not found. Python benchmark will fail.")
     PY_SOLUTIONS = {}
