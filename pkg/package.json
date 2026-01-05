@@ -1,0 +1,19 @@
+{
+  "name": "make10",
+  "type": "module",
+  "collaborators": [
+    "Funmatu"
+  ],
+  "description": "Fastest Make10 solver using Perfect Hashing",
+  "version": "0.1.0",
+  "files": [
+    "make10_bg.wasm",
+    "make10.js",
+    "make10.d.ts"
+  ],
+  "main": "make10.js",
+  "types": "make10.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
