@@ -10,15 +10,56 @@ from fractions import Fraction
 # ==========================================
 # 設定 & 定数
 # ==========================================
-DATA_FILE = "scripts/benchmark_data.txt"
-AWK_FILE = "scripts/make10_ultimate.awk"
+SCRIPT_DIR = "."  # カレントディレクトリで実行
+DATA_FILE = os.path.join(SCRIPT_DIR, "scripts/benchmark_data.txt")
+AWK_FILE = os.path.join(SCRIPT_DIR, "scripts/make10_ultimate.awk")
+RUST_BIN_PATH = os.path.join(
+    SCRIPT_DIR, "target/release/make10_cli"
+)  # CLIバイナリのパス
+# PyO3モジュールはPythonのsys.pathに追加されることを期待
+
+# ベンチマーク設定
 NUM_RECORDS = 1_000_000  # 100万行
-RUST_MODULE_NAME = "make10"
+CHUNK_SIZE = 100_000
 
 # ==========================================
-# 1. コアロジック: Make10ソルバー (Python版)
+# 0. 環境準備 (事前チェック)
 # ==========================================
-print(f"[{'SETUP':^10}] Initializing Make10 Solver Logic...")
+print(f"[{'SETUP':^10}] Checking prerequisites...")
+
+# Rust CLIバイナリの存在確認
+RUST_BIN_AVAILABLE = os.path.exists(RUST_BIN_PATH)
+if not RUST_BIN_AVAILABLE:
+    print(
+        f"  -> Warning: Rust native binary not found at '{RUST_BIN_PATH}'. Rust native benchmark will be skipped."
+    )
+    print("     Please run `cargo build --release --bin make10_cli` first.")
+
+# PyO3モジュールの存在確認
+try:
+    import make10
+
+    RUST_PY_AVAILABLE = True
+    print("  -> Rust PyO3 module 'make10' imported successfully.")
+except ImportError:
+    RUST_PY_AVAILABLE = False
+    print(
+        "  -> Warning: Rust PyO3 module 'make10' not found. Rust via Python benchmark will be skipped."
+    )
+    print("     Please run `maturin develop --release --features python` first.")
+
+# AWKスクリプトの存在確認
+AWK_SCRIPT_AVAILABLE = os.path.exists(AWK_FILE)
+if not AWK_SCRIPT_AVAILABLE:
+    print(
+        f"  -> Warning: AWK script not found at '{AWK_FILE}'. AWK benchmark will be skipped."
+    )
+    print("     Please run `python tools/make_make10_ultimate_awk.py` to generate it.")
+
+# ==========================================
+# 1. コアロジック: Make10ソルバー (Python & Data Gen)
+# ==========================================
+print(f"[{'SETUP':^10}] Initializing Make10 Logic & Generating Python Data Table...")
 
 OPS = [
     (lambda x, y: x + y, "+"),
@@ -44,7 +85,10 @@ def solve_expression(nums):
                         res = f3(r2, d)
                         if res is not None and res == 10:
                             solutions.add(f"(({p[0]}{s1}{p[1]}){s2}{p[2]}){s3}{p[3]}")
-            except:
+            except (
+                TypeError,
+                ZeroDivisionError,
+            ):  # Python 3.9+ handles ZeroDivisionError in Fraction division
                 pass
             try:
                 rl = f1(a, b)
@@ -53,171 +97,139 @@ def solve_expression(nums):
                     res = f3(rl, rr)
                     if res is not None and res == 10:
                         solutions.add(f"({p[0]}{s1}{p[1]}){s3}({p[2]}{s2}{p[3]})")
-            except:
+            except (TypeError, ZeroDivisionError):
                 pass
     return sorted(list(solutions))
 
 
-# ==========================================
-# 2. ルックアップテーブルの全生成
-# ==========================================
-print(f"[{'SETUP':^10}] Pre-calculating ALL 715 patterns (Python)...")
+# 全パターン計算とPythonテーブルデータの準備
 start_gen = time.time()
-
 PY_TABLE = {}
-AWK_DATA_LINES = []
+count_solved = 0
+
 combinations = list(itertools.combinations_with_replacement(range(10), 4))
 
 for combo in combinations:
-    key_tuple = tuple(sorted(combo))
+    key_tuple = tuple(sorted(combo))  # sorted tuple for dictionary key
     sols = solve_expression(combo)
     PY_TABLE[key_tuple] = sols
-    idx = key_tuple[0] * 1000 + key_tuple[1] * 100 + key_tuple[2] * 10 + key_tuple[3]
+
     if sols:
-        sol_str = ", ".join(sols).replace('"', '\\"')
-        AWK_DATA_LINES.append(f'    S[{idx}] = "{sol_str}"')
+        count_solved += 1
 
-gen_time = time.time() - start_gen
-print(f"[{'DONE':^10}] Generated {len(combinations)} entries in {gen_time:.3f} sec.")
-
-# ==========================================
-# 3. 完全な AWK スクリプトの生成
-# ==========================================
-print(f"[{'SETUP':^10}] Writing '{AWK_FILE}' (Full Lookup Table)...")
-
-awk_script_content = """BEGIN {
-    FS = ""
-    OFS = " -> "
-"""
-awk_script_content += "\n".join(AWK_DATA_LINES)
-awk_script_content += """
-}
-{
-    if (NF < 4) next
-    n1 = $1 + 0; n2 = $2 + 0; n3 = $3 + 0; n4 = $4 + 0
-    if (n1 > n2) { t=n1; n1=n2; n2=t }
-    if (n3 > n4) { t=n3; n3=n4; n4=t }
-    if (n1 > n3) { t=n1; n1=n3; n3=t }
-    if (n2 > n4) { t=n2; n2=n4; n4=t }
-    if (n2 > n3) { t=n2; n2=n3; n3=t }
-    key = n1*1000 + n2*100 + n3*10 + n4
-    if (key in S) { found = 1 } else { found = 0 }
-}
-"""
-with open(AWK_FILE, "w", encoding="utf-8") as f:
-    f.write(awk_script_content)
+print(
+    f"[{'DONE':^10}] Generated Python solution table ({count_solved} solvable patterns) in {time.time() - start_gen:.3f} sec."
+)
 
 # ==========================================
-# 4. テストデータの生成
+# 2. テストデータ生成
 # ==========================================
-print(f"[{'SETUP':^10}] Generating {NUM_RECORDS:,} test records to '{DATA_FILE}'...")
+print(f"[{'SETUP':^10}] Generating {NUM_RECORDS:,} test records...")
 with open(DATA_FILE, "w") as f:
-    chunk_size = 100_000
-    for _ in range(0, NUM_RECORDS, chunk_size):
-        lines = [f"{random.randint(0, 9999):04d}" for _ in range(chunk_size)]
+    for _ in range(0, NUM_RECORDS, CHUNK_SIZE):
+        lines = [f"{random.randint(0, 9999):04d}" for _ in range(CHUNK_SIZE)]
         f.write("\n".join(lines) + "\n")
 
 # ==========================================
-# 5. Rustモジュールのロード確認
+# 3. ベンチマーク実行: Round 1 (Latency)
 # ==========================================
-try:
-    import make10
+print("\n" + "=" * 80)
+print(f"{'ROUND 1: LATENCY (Overhead Check)':^80}")
+print("=" * 80)
+print("Measure: Time to solve ONE input (Microseconds)")
+print("  - Python/Rust(Py): Function call overhead")
+print("  - Mawk: Process spawn + Compilation + Execution overhead (if available)")
+print("-" * 80)
 
-    RUST_AVAILABLE = True
-    print(f"[{'INFO':^10}] Rust module '{RUST_MODULE_NAME}' loaded successfully.")
-except ImportError:
-    RUST_AVAILABLE = False
-    print(f"[{'WARN':^10}] Rust module '{RUST_MODULE_NAME}' NOT found (skipping Rust).")
-
-# ==========================================
-# 6. ベンチマーク関数
-# ==========================================
-# mawkコマンドの特定
+# Mawkコマンド決定
 awk_cmd = "mawk"
-if subprocess.call(["which", "mawk"], stdout=subprocess.DEVNULL) != 0:
+if (
+    subprocess.call(
+        ["which", "mawk"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    != 0
+):
     awk_cmd = "awk"
+    if (
+        subprocess.call(
+            ["which", "awk"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        != 0
+    ):
+        print(
+            "  -> Warning: Neither 'mawk' nor 'awk' found. AWK latency benchmark will be skipped."
+        )
+        AWK_SCRIPT_AVAILABLE = False  # AWK実行不可とする
 
 
-def bench_python_lookup(n1, n2, n3, n4):
-    key = tuple(sorted((n1, n2, n3, n4)))
-    return PY_TABLE.get(key, [])
+def bench_py(n1, n2, n3, n4):
+    k = tuple(sorted((n1, n2, n3, n4)))
+    return PY_TABLE.get(k)
 
 
-def bench_rust_lookup(n1, n2, n3, n4):
-    if RUST_AVAILABLE:
+def bench_rs_py(n1, n2, n3, n4):
+    if RUST_PY_AVAILABLE:
         return make10.solve(n1, n2, n3, n4)
     return []
 
 
-def bench_mawk_single(n1, n2, n3, n4):
-    """
-    1回だけMawkプロセスを起動して解かせる。
-    プロセス起動コスト + スクリプトパースコスト + 実行コスト の合計になる。
-    """
-    input_str = f"{n1}{n2}{n3}{n4}\n"
-    subprocess.run(
-        [awk_cmd, "-f", AWK_FILE],
-        input=input_str.encode("utf-8"),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+def bench_mawk_proc(n1, n2, n3, n4):
+    if AWK_SCRIPT_AVAILABLE:
+        inp = f"{n1}{n2}{n3}{n4}\n".encode()
+        # stdoutはDEVNULLに捨てる。AWK_FILEがOFSで出力するので、そこは変更しない。
+        subprocess.run(
+            [awk_cmd, "-f", AWK_FILE],
+            input=inp,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
 
 
-# ==========================================
-# Round 1: Latency (単発呼び出し)
-# ==========================================
-print("\n" + "=" * 70)
-print(f"{'ROUND 1: LATENCY (Single Call Overhead)':^70}")
-print("=" * 70)
-print("Measure: Time to solve ONE input (Microseconds)")
-print("Note: Mawk includes process spawn overhead (Process vs Function call).")
-print("-" * 70)
-print(f"{'Input':<15} | {'Python (µs)':>12} | {'Rust (µs)':>12} | {'Mawk (µs)':>12}")
-print("-" * 70)
-
-test_inputs = [(1, 4, 5, 7), (0, 0, 0, 0), (9, 9, 9, 9)]
+test_inputs = [(1, 4, 5, 7), (9, 9, 9, 9)]
+print(
+    f"{'Input':<15} | {'Python (µs)':>12} | {'Rust(Py) (µs)':>12} | {'Mawk (µs)':>12}"
+)
 
 for nums in test_inputs:
-    # Python (100,000回平均)
-    t_py = timeit.timeit(lambda: bench_python_lookup(*nums), number=100000)
-    t_py_avg = (t_py / 100000) * 1_000_000
+    # Python
+    t_py = timeit.timeit(lambda: bench_py(*nums), number=50000) * 1_000_000 / 50000
 
-    # Rust (100,000回平均)
-    if RUST_AVAILABLE:
-        t_rs = timeit.timeit(lambda: bench_rust_lookup(*nums), number=100000)
-        t_rs_avg = (t_rs / 100000) * 1_000_000
+    # Rust via Python
+    if RUST_PY_AVAILABLE:
+        t_rs = (
+            timeit.timeit(lambda: bench_rs_py(*nums), number=50000) * 1_000_000 / 50000
+        )
+        rs_str = f"{t_rs:.3f}"
     else:
-        t_rs_avg = 0.0
+        rs_str = "-"
 
-    # Mawk (100回平均) ※遅すぎるので回数を減らす
-    # プロセス起動を含むため、ここが圧倒的に遅くなるはず
-    start = time.time()
-    for _ in range(100):
-        bench_mawk_single(*nums)
-    t_awk_total = time.time() - start
-    t_awk_avg = (t_awk_total / 100) * 1_000_000
+    # Mawk (Process) - 遅いので回数減らす
+    awk_str = "-"
+    if AWK_SCRIPT_AVAILABLE:
+        t_awk_start = time.time()
+        for _ in range(20):
+            bench_mawk_proc(*nums)
+        t_awk = (time.time() - t_awk_start) * 1_000_000 / 20
+        awk_str = f"{t_awk:.3f}"
 
-    rs_str = f"{t_rs_avg:12.3f}" if RUST_AVAILABLE else f"{'-':>12}"
-    print(f"{str(nums):<15} | {t_py_avg:12.3f} | {rs_str} | {t_awk_avg:12.3f}")
+    print(f"{str(nums):<15} | {t_py:12.3f} | {rs_str:>12} | {awk_str:>12}")
 
-print("-" * 70)
-print("Analysis: Mawk is ~10,000x slower here due to process spawning.")
-print("-" * 70)
-
+print("-" * 80)
 
 # ==========================================
-# Round 2: Throughput (ストリーム処理)
+# 4. ベンチマーク実行: Round 2 (Throughput)
 # ==========================================
-print("\n" + "=" * 70)
-print(f"{'ROUND 2: THROUGHPUT (1,000,000 Records)':^70}")
-print("=" * 70)
-print("Measure: Total time to process 1,000,000 lines.")
-print("-" * 70)
+print("\n" + "=" * 80)
+print(f"{'ROUND 2: THROUGHPUT (File I/O + Process)':^80}")
+print("=" * 80)
+print(f"Measure: Total time to process {NUM_RECORDS:,} lines.")
+print("Goal: Compare pure processing power including I/O strategies.")
+print("-" * 80)
 
 results = []
 
 # --- Python ---
-print("Running Python (Pure)...", end="", flush=True)
+print("1. Running Python (Pure)...", end="", flush=True)
 start = time.time()
 with open(DATA_FILE, "r") as f:
     for line in f:
@@ -225,14 +237,16 @@ with open(DATA_FILE, "r") as f:
         if len(l) < 4:
             continue
         n1, n2, n3, n4 = int(l[0]), int(l[1]), int(l[2]), int(l[3])
-        _ = PY_TABLE.get(tuple(sorted((n1, n2, n3, n4))), [])
+        _ = PY_TABLE.get(tuple(sorted((n1, n2, n3, n4))))
 dur_py = time.time() - start
 results.append(("Python (Pure)", dur_py))
-print(f"\rPython (Pure)       : {dur_py:.4f} sec ({NUM_RECORDS / dur_py:,.0f} ops/sec)")
+print(
+    f"\r1. Python (Pure)        : {dur_py:.4f} s ({int(NUM_RECORDS / dur_py):,} ops/s)"
+)
 
-# --- Rust ---
-if RUST_AVAILABLE:
-    print("Running Rust (via Py)...", end="", flush=True)
+# --- Rust via Python ---
+if RUST_PY_AVAILABLE:
+    print("2. Running Rust (via Py)...", end="", flush=True)
     start = time.time()
     with open(DATA_FILE, "r") as f:
         for line in f:
@@ -241,31 +255,57 @@ if RUST_AVAILABLE:
                 continue
             n1, n2, n3, n4 = int(l[0]), int(l[1]), int(l[2]), int(l[3])
             _ = make10.solve(n1, n2, n3, n4)
-    dur_rs = time.time() - start
-    results.append(("Rust (via Py)", dur_rs))
+    dur_rs_py = time.time() - start
+    results.append(("Rust (via Py)", dur_rs_py))
     print(
-        f"\rRust (via Py)       : {dur_rs:.4f} sec ({NUM_RECORDS / dur_rs:,.0f} ops/sec)"
+        f"\r2. Rust (via Py)        : {dur_rs_py:.4f} s ({int(NUM_RECORDS / dur_rs_py):,} ops/s)"
     )
 
 # --- Mawk ---
-print(f"Running {awk_cmd} (Native)...", end="", flush=True)
-start = time.time()
-subprocess.run([awk_cmd, "-f", AWK_FILE, DATA_FILE], stdout=subprocess.DEVNULL)
-dur_awk = time.time() - start
-results.append((f"{awk_cmd} (Native)", dur_awk))
-print(f"\r{awk_cmd:<20}: {dur_awk:.4f} sec ({NUM_RECORDS / dur_awk:,.0f} ops/sec)")
+if AWK_SCRIPT_AVAILABLE:
+    print(f"3. Running {awk_cmd} (Native)...", end="", flush=True)
+    start = time.time()
+    # stdoutをDEVNULLに捨てることで、ターミナル表示速度ではなく計算速度を測る
+    subprocess.run(
+        [awk_cmd, "-f", AWK_FILE, DATA_FILE],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    dur_awk = time.time() - start
+    results.append((f"{awk_cmd} (Native)", dur_awk))
+    print(
+        f"\r3. {awk_cmd:<18} : {dur_awk:.4f} s ({int(NUM_RECORDS / dur_awk):,} ops/s)"
+    )
+
+# --- Rust Native Binary ---
+if RUST_BIN_AVAILABLE:
+    print("4. Running Rust (Native Binary)...", end="", flush=True)
+    start = time.time()
+    subprocess.run(
+        [RUST_BIN_PATH, DATA_FILE], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    dur_rs_bin = time.time() - start
+    results.append(("Rust (Native Binary)", dur_rs_bin))
+    print(
+        f"\r4. Rust (Native Binary) : {dur_rs_bin:.4f} s ({int(NUM_RECORDS / dur_rs_bin):,} ops/s)"
+    )
 
 # ==========================================
-# 最終ランキング
+# 最終結果表示
 # ==========================================
-print("\n" + "=" * 70)
-print(f"{'FINAL SUMMARY':^70}")
-print("=" * 70)
+print("\n" + "=" * 80)
+print(f"{'FINAL SUMMARY':^80}")
+print("=" * 80)
 results.sort(key=lambda x: x[1])
 
-print(f"{'Rank':<4} | {'Name':<20} | {'Total Time':<10} | {'Throughput':<15}")
-print("-" * 70)
-for i, (name, dur) in enumerate(results, 1):
-    throughput = f"{NUM_RECORDS / dur:,.0f} ops/s"
-    print(f"{i:<4} | {name:<20} | {dur:8.4f} s | {throughput:<15}")
-print("=" * 70)
+print(f"{'Rank':<4} | {'Name':<22} | {'Time (sec)':<10} | {'Throughput':<15} | {'Rel'}")
+print("-" * 80)
+if results:
+    best_time = results[0][1]
+    for i, (name, dur) in enumerate(results, 1):
+        throughput = f"{int(NUM_RECORDS / dur):,} ops/s"
+        rel = f"{dur / best_time:.2f}x"
+        print(f"{i:<4} | {name:<22} | {dur:10.4f} | {throughput:<15} | {rel}")
+else:
+    print("No benchmarks ran.")
+print("=" * 80)

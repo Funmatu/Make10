@@ -126,6 +126,6 @@ def generate_mawk_source():
 
 if __name__ == "__main__":
     src = generate_mawk_source()
-    with open("make10_all.awk", "w", encoding="utf-8") as f:
+    with open("scripts/make10_ultimate.awk", "w", encoding="utf-8") as f:
         f.write(src)
-    print("Done: make10_all.awk generated.")
+    print("Done: make10_ultimate.awk generated.")
