@@ -3,27 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>nx-compute-rs Demo</title>
+    <title>Make10 Solver: O(1) Performance Demo</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
-        h1 { border-bottom: 2px solid #eee; padding-bottom: 0.5rem; }
-        .card { border: 1px solid #ddd; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        button { background-color: #0070f3; color: white; border: none; padding: 0.8rem 1.5rem; border-radius: 5px; cursor: pointer; font-size: 1rem; }
-        button:hover { background-color: #005bb5; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        #output { margin-top: 1rem; padding: 1rem; background: #f5f5f5; border-radius: 5px; font-family: monospace; }
+        :root { --primary: #0070f3; --bg: #ffffff; --text: #333; --card-bg: #f5f5f5; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 700px; margin: 0 auto; padding: 2rem 1rem; color: var(--text); background: var(--bg); }
+        h1 { font-size: 2rem; margin-bottom: 0.5rem; text-align: center; }
+        p.subtitle { text-align: center; color: #666; margin-bottom: 2rem; }
+        
+        .input-container { display: flex; gap: 10px; justify-content: center; margin-bottom: 2rem; }
+        input[type="number"] { width: 60px; height: 60px; font-size: 2rem; text-align: center; border: 2px solid #ddd; border-radius: 12px; transition: border-color 0.2s; }
+        input[type="number"]:focus { border-color: var(--primary); outline: none; }
+        
+        button { display: block; width: 100%; max-width: 300px; margin: 0 auto; padding: 1rem; background: var(--primary); color: white; border: none; border-radius: 8px; font-size: 1.2rem; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
+        button:hover { opacity: 0.9; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+
+        #output { margin-top: 2rem; }
+        .stat-card { background: var(--card-bg); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; font-family: monospace; font-size: 0.9rem; text-align: center; color: #555; }
+        .solution-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+        .solution-item { background: #eaf4ff; color: #005bb5; padding: 0.8rem; border-radius: 6px; text-align: center; font-family: monospace; font-weight: bold; font-size: 1.1rem; border: 1px solid #cce4ff; }
+        .no-solution { text-align: center; color: #e00; font-weight: bold; padding: 2rem; background: #fff0f0; border-radius: 8px; }
     </style>
 </head>
 <body>
-    <h1>nx-compute-rs</h1>
-    <p>R&D Dual-Runtime Architecture Proof of Concept.</p>
-    
-    <div class="card">
-        <h3>WebAssembly Computation</h3>
-        <p>Run the rigorous Rust backend directly in your browser.</p>
-        <button id="run-btn" disabled>Loading WASM...</button>
-        <div id="output">Waiting for input...</div>
+    <h1>Make10 Solver</h1>
+    <p class="subtitle">Powered by Rust & WebAssembly (Theoretical Limit Edition)</p>
+
+    <div class="input-container">
+        <input type="number" id="n1" value="1" min="0" max="9" oninput="this.select()">
+        <input type="number" id="n2" value="4" min="0" max="9" oninput="this.select()">
+        <input type="number" id="n3" value="5" min="0" max="9" oninput="this.select()">
+        <input type="number" id="n4" value="7" min="0" max="9" oninput="this.select()">
     </div>
+
+    <button id="solve-btn" disabled>Loading WASM...</button>
+
+    <div id="output"></div>
 
     <script type="module" src="./index.js"></script>
 </body>
