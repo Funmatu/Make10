@@ -94,7 +94,6 @@ wasm-pack build --target web --out-dir www/pkg --no-default-features --features 
 
 # 2. Serve
 cd www && python3 -m http.server
-
 ```
 
 ## 📊 Performance Benchmarks
@@ -106,6 +105,49 @@ cd www && python3 -m http.server
 | **Rust Static Array** | $O(1)$ | **~0.01 ** | **Theoretical Limit (Memory Access only).** |
 
 *Note: In the Python binding, the overhead of PyO3 (converting Rust Strings to Python Strings) dominates the execution time, making it slightly slower than a pure Python dict lookup for this specific micro-task. However, the Rust core logic itself executes in nanoseconds.*
+
+```
+$ python ./scripts/benchmark_battle.py 
+[  SETUP   ] Checking prerequisites...
+  -> Rust PyO3 module 'make10' imported successfully.
+[  SETUP   ] Initializing Make10 Logic & Generating Python Data Table...
+[   DONE   ] Generated Python solution table (540 solvable patterns) in 1.779 sec.
+[  SETUP   ] Generating 1,000,000 test records...
+
+================================================================================
+                       ROUND 1: LATENCY (Overhead Check)                        
+================================================================================
+Measure: Time to solve ONE input (Microseconds)
+  - Python/Rust(Py): Function call overhead
+  - Mawk: Process spawn + Compilation + Execution overhead (if available)
+--------------------------------------------------------------------------------
+Input           |  Python (µs) | Rust(Py) (µs) |    Mawk (µs)
+(1, 4, 5, 7)    |        0.217 |        0.120 |     1333.964
+(9, 9, 9, 9)    |        0.216 |        0.117 |     1200.032
+--------------------------------------------------------------------------------
+
+================================================================================
+                    ROUND 2: THROUGHPUT (File I/O + Process)                    
+================================================================================
+Measure: Total time to process 1,000,000 lines.
+Goal: Compare pure processing power including I/O strategies.
+--------------------------------------------------------------------------------
+1. Python (Pure)        : 0.8307 s (1,203,820 ops/s)
+2. Rust (via Py)        : 0.6595 s (1,516,338 ops/s)
+3. mawk               : 0.5723 s (1,747,445 ops/s)
+4. Rust (Native Binary) : 0.0217 s (45,983,116 ops/s)
+
+================================================================================
+                                 FINAL SUMMARY                                  
+================================================================================
+Rank | Name                   | Time (sec) | Throughput      | Rel
+--------------------------------------------------------------------------------
+1    | Rust (Native Binary)   |     0.0217 | 45,983,116 ops/s | 1.00x
+2    | mawk (Native)          |     0.5723 | 1,747,445 ops/s | 26.31x
+3    | Rust (via Py)          |     0.6595 | 1,516,338 ops/s | 30.33x
+4    | Python (Pure)          |     0.8307 | 1,203,820 ops/s | 38.20x
+================================================================================
+```
 
 ## 📜 License
 
